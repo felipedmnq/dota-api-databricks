@@ -1,14 +1,24 @@
 # Databricks notebook source
 # MAGIC %md
+# MAGIC ## Utils
+
+# COMMAND ----------
+
+# MAGIC %run "/Users/felipe.vasconcelos@artefact.com/game_lake_house/utilities/utilities"
+
+# COMMAND ----------
+
+# MAGIC %run "/Users/felipe.vasconcelos@artefact.com/game_lake_house/utilities/configs"
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Imports
 
 # COMMAND ----------
 
 import json
-from requests import Session
 from functools import lru_cache
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from pyspark.sql.types import StructField, StructType, LongType
 import pandas as pd
 from tqdm import tqdm
@@ -24,49 +34,12 @@ from delta.tables import DeltaTable
 spark.conf.set("spark.databricks.delta.optimizeWrite.enabled", "true")
 spark.conf.set("spark.databricks.delta.autoCompact.enabled", "true")
 
-
-OPENDOTA_URL = "https://api.opendota.com/api/matches"
-RAW_LAKE_PATH = "/mnt/datalake/game-lake-house/raw/dota"
-TABLE_NAME = "match_details"
-# TABLE_PATH = f"{RAW_LAKE_PATH}/{TABLE_NAME}"
+Configs = MatchDetailConfigs()
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Development
-
-# COMMAND ----------
-
-class HTTPRequester:
-
-    def __init__(self) -> None:
-        self.session = self.create_session()
-
-    @classmethod
-    def create_session(
-        cls,
-        retries: int = 3,
-        backoff_factor: float = 0.3,
-        status_forcelist: tuple[int] = tuple(range(400, 430)) + (500, 502, 503, 504),
-    ) -> Session:
-
-        session = Session()
-
-        retry = Retry(
-            total=retries,
-            read=retries,
-            connect=retries,
-            backoff_factor=backoff_factor,
-            status_forcelist=status_forcelist,
-            allowed_methods=("GET")
-        )
-
-        session_adapter = HTTPAdapter(max_retries=retry)
-
-        session.mount("http://", session_adapter)
-        session.mount("https://", session_adapter)
-
-        return session
 
 # COMMAND ----------
 
@@ -144,7 +117,7 @@ class Ingestor:
 
 session = HTTPRequester().create_session()
 
-ingestor = Ingestor(session, OPENDOTA_URL, TABLE_NAME, RAW_LAKE_PATH)
+ingestor = Ingestor(session, Configs.OPENDOTA_URL, Configs.TABLE_NAME, Configs.RAW_LAKE_PATH)
 
 # COMMAND ----------
 
