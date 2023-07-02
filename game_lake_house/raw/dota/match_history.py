@@ -1,5 +1,14 @@
 # Databricks notebook source
-dbutils.fs.ls("/mnt/datalake")
+# MAGIC %md
+# MAGIC ## Utils
+
+# COMMAND ----------
+
+# MAGIC %run "/Users/felipe.vasconcelos@artefact.com/game_lake_house/utilities/utilities"
+
+# COMMAND ----------
+
+# MAGIC %run "/Users/felipe.vasconcelos@artefact.com/game_lake_house/utilities/configs"
 
 # COMMAND ----------
 
@@ -8,15 +17,11 @@ dbutils.fs.ls("/mnt/datalake")
 
 # COMMAND ----------
 
-import requests
 from typing import Dict, Tuple
 from pyspark.sql import functions as F
 from pyspark.sql.dataframe import DataFrame
 from datetime import datetime
 import argparse
-from requests import Session
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from functools import lru_cache
 
 # COMMAND ----------
@@ -26,13 +31,7 @@ from functools import lru_cache
 
 # COMMAND ----------
 
-OPENDOTA_URL = "https://api.opendota.com/api/proMatches"
-LAKE_PATH = "/mnt/datalake/game-lake-house"
-TABLE_NAME = "match_history"
-RAW_TABLE_PATH = f"{LAKE_PATH}/raw/dota/{TABLE_NAME}"
-
-INGESTION_MODE = "history"
-# INGESTION_MODE = "new" 
+Configs = HistoryMatchesConfigs()
 
 # COMMAND ----------
 
@@ -44,39 +43,6 @@ INGESTION_MODE = "history"
 # MAGIC %md
 # MAGIC #### Get pro matches history
 # MAGIC - Get data from each dota pro match.
-
-# COMMAND ----------
-
-class HTTPRequester:
-
-    def __init__(self) -> None:
-        self.session = self.create_session()
-
-    @classmethod
-    def create_session(
-        cls,
-        retries: int = 3,
-        backoff_factor: float = 0.3,
-        status_forcelist: tuple[int] = tuple(range(400, 430)) + (500, 502, 503, 504),
-    ) -> Session:
-
-        session = Session()
-
-        retry = Retry(
-            total=retries,
-            read=retries,
-            connect=retries,
-            backoff_factor=backoff_factor,
-            status_forcelist=status_forcelist,
-            allowed_methods=("GET")
-        )
-
-        session_adapter = HTTPAdapter(max_retries=retry)
-
-        session.mount("http://", session_adapter)
-        session.mount("https://", session_adapter)
-
-        return session
 
 # COMMAND ----------
 
@@ -126,7 +92,7 @@ class Ingestor:
         )
 
     def _get_current_min_max_match_id(self) -> int:
-        df = spark.read.format("delta").load(RAW_PATH)
+        df = spark.read.format("delta").load(Configs.RAW_TABLE_PATH)
         min_match_id = df.select(F.min(F.col("match_id"))).collect()[0][0]
         max_match_id = df.select(F.max(F.col("match_id"))).collect()[0][0]
         return min_match_id, max_match_id
@@ -162,7 +128,7 @@ class Ingestor:
 # COMMAND ----------
 
 session = HTTPRequester().create_session()
-match_ingestor = Ingestor(session, OPENDOTA_URL, RAW_PATH)
+match_ingestor = Ingestor(session, Configs.OPENDOTA_URL, Configs.RAW_TABLE_PATH)
 
 
 if INGESTION_MODE == "history":
