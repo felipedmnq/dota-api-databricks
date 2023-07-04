@@ -8,10 +8,6 @@
 
 # COMMAND ----------
 
-# MAGIC %run "/Users/felipe.vasconcelos@artefact.com/game_lake_house/utilities/configs"
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Imports
 
@@ -35,6 +31,8 @@ spark.conf.set("spark.databricks.delta.optimizeWrite.enabled", "true")
 spark.conf.set("spark.databricks.delta.autoCompact.enabled", "true")
 
 Configs = MatchDetailConfigs()
+session = HTTPRequester().create_session()
+Extractor = Extractor(session)
 
 # COMMAND ----------
 
@@ -44,19 +42,18 @@ Configs = MatchDetailConfigs()
 # COMMAND ----------
 
 class Ingestor:
-    def __init__(self, session: Session,  url: str, table_name: str, dota_raw_path: str) -> None:
-        self.session = session
+    def __init__(self,  url: str, table_name: str, dota_raw_path: str) -> None:
         self.url = url
         self.table_name = table_name
         self.dota_raw_path = dota_raw_path
         self.table_path = f"{self.dota_raw_path}/{self.table_name}" 
 
-    @lru_cache
-    def _get_data(self, match_id) -> list[dict]:
+    # @lru_cache
+    # def _get_data(self, match_id) -> list[dict]:
 
-        url = f"{self.url}/{match_id}"
-        response = self.session.get(url)
-        return response.json()   
+    #     url = f"{self.url}/{match_id}"
+    #     response = self.session.get(url)
+    #     return response.json()   
     
     def _save_data(self, data: dict) -> None:
         match_id = data["match_id"]
@@ -104,8 +101,9 @@ class Ingestor:
     
     def execute_job(self) -> None:
         match_ids = self._get_match_ids()
-        for id_ in tqdm(match_ids[:10]): # limiting job
-            data = self._get_data(id_)
+        for match_id in tqdm(match_ids[:10]): # limiting job
+            url = f"{self.url}/{match_id}"
+            data = self._get_data(url)
             if "match_id" in data:
                 self._save_data(data)
 
@@ -115,24 +113,4 @@ class Ingestor:
 
 # COMMAND ----------
 
-session = HTTPRequester().create_session()
-
-ingestor = Ingestor(session, Configs.OPENDOTA_URL, Configs.TABLE_NAME, Configs.RAW_LAKE_PATH)
-
-# COMMAND ----------
-
 ingestor.execute_job()
-
-# COMMAND ----------
-
-# match_ids = ingestor.get_match_ids()
-len(match_ids)
-
-# COMMAND ----------
-
-df = spark.read.format("delta").load(ingestor.table_path)
-df.display()
-
-# COMMAND ----------
-
-

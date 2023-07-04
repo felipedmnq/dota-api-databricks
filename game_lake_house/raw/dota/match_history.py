@@ -8,10 +8,6 @@
 
 # COMMAND ----------
 
-# MAGIC %run "/Users/felipe.vasconcelos@artefact.com/game_lake_house/utilities/configs"
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Imports
 
@@ -24,6 +20,7 @@ from datetime import datetime
 import argparse
 from functools import lru_cache
 
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -32,6 +29,8 @@ from functools import lru_cache
 # COMMAND ----------
 
 Configs = HistoryMatchesConfigs()
+session = HTTPRequester().create_session()
+Extractor = Extractor(session)
 
 # COMMAND ----------
 
@@ -47,17 +46,18 @@ Configs = HistoryMatchesConfigs()
 # COMMAND ----------
 
 class Ingestor:
-    def __init__(self, session: Session, url: str, path_to_save: str) -> None:
+    def __init__(self, extractor, url: str, path_to_save: str) -> None:
         self.__session = session
         self.url = url
         self.path_to_save = path_to_save
+        self.extractor = extractor
         # self.date_stop = datetime.strptime(date_stop, "%Y-%m-%d")
 
-    @lru_cache
-    def _get_data(self, **params) -> list[dict]:
+    # @lru_cache
+    # def _get_data(self, **params) -> list[dict]:
 
-        response = self.__session.get(self.url, params=params)
-        return response.json()
+    #     response = self.__session.get(self.url, params=params)
+    #     return response.json()
 
     def _get_min_match_id(self, data: list[dict]) -> int:
         return min([item["match_id"] for item in data])
@@ -79,7 +79,7 @@ class Ingestor:
     #     return df.select(F.min(F.to_date("dt_start"))).collect()[0][0]
         
     def _get_and_save(self, **params) -> list[dict]:
-        data = self._get_data(**params)
+        data = self.extractor._get_data(Configs.OPENDOTA_URL, **params)
         df = spark.createDataFrame(data)
         df = self._augment_start_time(df)
         # min_date = self._get_min_date(df)
@@ -127,15 +127,14 @@ class Ingestor:
 
 # COMMAND ----------
 
-session = HTTPRequester().create_session()
 match_ingestor = Ingestor(session, Configs.OPENDOTA_URL, Configs.RAW_TABLE_PATH)
 
 
-if INGESTION_MODE == "history":
+if Configs.INGESTION_MODE == "history":
     min_match_id = match_ingestor._get_current_min_max_match_id()[0]
     data = match_ingestor._get_and_save(less_than_match_id=min_match_id)
     match_ingestor.get_all_matches(data=data, hist=True)
-elif INGESTION_MODE == "new":
+elif Configs.INGESTION_MODE == "new":
     match_ingestor.get_all_matches()
 
 
