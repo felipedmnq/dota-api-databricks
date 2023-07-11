@@ -8,10 +8,6 @@
 
 # COMMAND ----------
 
-# MAGIC %run "/Users/felipe.vasconcelos@artefact.com/game_lake_house/utilities/configs"
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Imports
 
@@ -23,6 +19,8 @@ from pyspark.sql.types import StructField, StructType, LongType
 import pandas as pd
 from tqdm import tqdm
 from delta.tables import DeltaTable
+from dataclasses import dataclass
+from requests import Session
 
 # COMMAND ----------
 
@@ -34,7 +32,14 @@ from delta.tables import DeltaTable
 spark.conf.set("spark.databricks.delta.optimizeWrite.enabled", "true")
 spark.conf.set("spark.databricks.delta.autoCompact.enabled", "true")
 
-Configs = MatchDetailConfigs()
+@dataclass
+class RawMatchDetailConfigs:
+    OPENDOTA_URL: str = "https://api.opendota.com/api/matches"
+    RAW_LAKE_PATH: str = "/mnt/datalake/game-lake-house/raw/dota"
+    TABLE_NAME: str = "match_details"
+    TABLE_PATH: str = f"{RAW_LAKE_PATH}/{TABLE_NAME}"
+
+Configs = RawMatchDetailConfigs()
 
 # COMMAND ----------
 
@@ -44,7 +49,7 @@ Configs = MatchDetailConfigs()
 # COMMAND ----------
 
 class Ingestor:
-    def __init__(self, session: Session,  url: str, table_name: str, dota_raw_path: str) -> None:
+    def __init__(self, session: Session, url: str, table_name: str, dota_raw_path: str, table_path: str) -> None:
         self.session = session
         self.url = url
         self.table_name = table_name
@@ -52,9 +57,8 @@ class Ingestor:
         self.table_path = f"{self.dota_raw_path}/{self.table_name}" 
 
     @lru_cache
-    def _get_data(self, match_id) -> list[dict]:
+    def _get_data(self, url: str) -> list[dict]:
 
-        url = f"{self.url}/{match_id}"
         response = self.session.get(url)
         return response.json()   
     
@@ -104,8 +108,9 @@ class Ingestor:
     
     def execute_job(self) -> None:
         match_ids = self._get_match_ids()
-        for id_ in tqdm(match_ids[:10]): # limiting job
-            data = self._get_data(id_)
+        for match_id in tqdm(match_ids[:10]): # limiting job
+            url = f"{self.url}/{match_id}"
+            data = self._get_data(url)
             if "match_id" in data:
                 self._save_data(data)
 
@@ -116,22 +121,10 @@ class Ingestor:
 # COMMAND ----------
 
 session = HTTPRequester().create_session()
-
-ingestor = Ingestor(session, Configs.OPENDOTA_URL, Configs.TABLE_NAME, Configs.RAW_LAKE_PATH)
-
-# COMMAND ----------
+ingestor = Ingestor(session, Configs.OPENDOTA_URL, Configs.TABLE_NAME, Configs.RAW_LAKE_PATH, Configs.TABLE_PATH)
+# ingestor._optimize_delta()
 
 ingestor.execute_job()
-
-# COMMAND ----------
-
-# match_ids = ingestor.get_match_ids()
-len(match_ids)
-
-# COMMAND ----------
-
-df = spark.read.format("delta").load(ingestor.table_path)
-df.display()
 
 # COMMAND ----------
 

@@ -4,10 +4,29 @@ from urllib3.util.retry import Retry
 from functools import lru_cache
 import requests
 from requests import Session
+from dataclasses import dataclass, field
 
 # COMMAND ----------
 
-class HTTPRequester:
+# MAGIC %md
+# MAGIC ## Utilities
+
+# COMMAND ----------
+
+class Extractor:
+
+    def __init__(self, session: Session) -> None:
+        self.__session = session
+
+    @lru_cache
+    def get_data(self, url: str, **params) -> list[dict]:
+
+        response = self.__session.get(url, params=params)
+        return response.json()
+
+# COMMAND ----------
+
+ class HTTPRequester:
 
     def __init__(self) -> None:
         self.session = self.create_session()
@@ -37,6 +56,11 @@ class HTTPRequester:
         session.mount("https://", session_adapter)
 
         return session
+
+
+# COMMAND ----------
+
+
 
 # COMMAND ----------
 
