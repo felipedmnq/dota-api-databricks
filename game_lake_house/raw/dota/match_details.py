@@ -19,6 +19,8 @@ from pyspark.sql.types import StructField, StructType, LongType
 import pandas as pd
 from tqdm import tqdm
 from delta.tables import DeltaTable
+from dataclasses import dataclass
+from requests import Session
 
 # COMMAND ----------
 
@@ -30,9 +32,14 @@ from delta.tables import DeltaTable
 spark.conf.set("spark.databricks.delta.optimizeWrite.enabled", "true")
 spark.conf.set("spark.databricks.delta.autoCompact.enabled", "true")
 
-Configs = MatchDetailConfigs()
-session = HTTPRequester().create_session()
-Extractor = Extractor(session)
+@dataclass
+class RawMatchDetailConfigs:
+    OPENDOTA_URL: str = "https://api.opendota.com/api/matches"
+    RAW_LAKE_PATH: str = "/mnt/datalake/game-lake-house/raw/dota"
+    TABLE_NAME: str = "match_details"
+    TABLE_PATH: str = f"{RAW_LAKE_PATH}/{TABLE_NAME}"
+
+Configs = RawMatchDetailConfigs()
 
 # COMMAND ----------
 
@@ -42,18 +49,18 @@ Extractor = Extractor(session)
 # COMMAND ----------
 
 class Ingestor:
-    def __init__(self,  url: str, table_name: str, dota_raw_path: str) -> None:
+    def __init__(self, session: Session, url: str, table_name: str, dota_raw_path: str, table_path: str) -> None:
+        self.session = session
         self.url = url
         self.table_name = table_name
         self.dota_raw_path = dota_raw_path
         self.table_path = f"{self.dota_raw_path}/{self.table_name}" 
 
-    # @lru_cache
-    # def _get_data(self, match_id) -> list[dict]:
+    @lru_cache
+    def _get_data(self, url: str) -> list[dict]:
 
-    #     url = f"{self.url}/{match_id}"
-    #     response = self.session.get(url)
-    #     return response.json()   
+        response = self.session.get(url)
+        return response.json()   
     
     def _save_data(self, data: dict) -> None:
         match_id = data["match_id"]
@@ -113,4 +120,12 @@ class Ingestor:
 
 # COMMAND ----------
 
+session = HTTPRequester().create_session()
+ingestor = Ingestor(session, Configs.OPENDOTA_URL, Configs.TABLE_NAME, Configs.RAW_LAKE_PATH, Configs.TABLE_PATH)
+# ingestor._optimize_delta()
+
 ingestor.execute_job()
+
+# COMMAND ----------
+
+
