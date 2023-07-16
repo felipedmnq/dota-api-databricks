@@ -1,17 +1,10 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC ## Utils
+# DBTITLE 1,Imports
+import sys
 
-# COMMAND ----------
+sys.path.insert(0, "../../utils/")
 
-# MAGIC %run "/Users/felipe.vasconcelos@artefact.com/game_lake_house/utilities/utilities"
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Imports
-
-# COMMAND ----------
+import utils
 
 import json
 from functools import lru_cache
@@ -24,11 +17,7 @@ from requests import Session
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Configs
-
-# COMMAND ----------
-
+# DBTITLE 1,Configs
 spark.conf.set("spark.databricks.delta.optimizeWrite.enabled", "true")
 spark.conf.set("spark.databricks.delta.autoCompact.enabled", "true")
 
@@ -43,24 +32,14 @@ Configs = RawMatchDetailConfigs()
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Development
-
-# COMMAND ----------
-
+# DBTITLE 1,Get match details
 class Ingestor:
-    def __init__(self, session: Session, url: str, table_name: str, dota_raw_path: str, table_path: str) -> None:
-        self.session = session
+    def __init__(self, extractor, url: str, table_name: str, dota_raw_path: str, table_path: str) -> None:
+        self.extractor = extractor
         self.url = url
         self.table_name = table_name
         self.dota_raw_path = dota_raw_path
-        self.table_path = f"{self.dota_raw_path}/{self.table_name}" 
-
-    @lru_cache
-    def _get_data(self, url: str) -> list[dict]:
-
-        response = self.session.get(url)
-        return response.json()   
+        self.table_path = f"{self.dota_raw_path}/{self.table_name}"   
     
     def _save_data(self, data: dict) -> None:
         match_id = data["match_id"]
@@ -110,7 +89,7 @@ class Ingestor:
         match_ids = self._get_match_ids()
         for match_id in tqdm(match_ids[:10]): # limiting job
             url = f"{self.url}/{match_id}"
-            data = self._get_data(url)
+            data = self.extractor.get_data(url)
             if "match_id" in data:
                 self._save_data(data)
 
@@ -120,8 +99,9 @@ class Ingestor:
 
 # COMMAND ----------
 
-session = HTTPRequester().create_session()
-ingestor = Ingestor(session, Configs.OPENDOTA_URL, Configs.TABLE_NAME, Configs.RAW_LAKE_PATH, Configs.TABLE_PATH)
+session = utils.HTTPRequester().create_session()
+extractor = utils.Extractor(session)
+ingestor = Ingestor(extractor, Configs.OPENDOTA_URL, Configs.TABLE_NAME, Configs.RAW_LAKE_PATH, Configs.TABLE_PATH)
 # ingestor._optimize_delta()
 
 ingestor.execute_job()

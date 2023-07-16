@@ -1,17 +1,10 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC ## Utils
+# DBTITLE 1,Imports
+import sys
 
-# COMMAND ----------
+sys.path.insert(0, "../../utils/")
 
-# MAGIC %run "/Users/felipe.vasconcelos@artefact.com/game_lake_house/utilities/utilities"
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Imports
-
-# COMMAND ----------
+import utils
 
 from typing import Dict, Tuple
 from pyspark.sql import functions as F
@@ -24,45 +17,25 @@ from typing import Literal
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Configs
-
-# COMMAND ----------
-
+# DBTITLE 1,Configs
 @dataclass
 class HistoryMatchesConfigs:
     OPENDOTA_URL: str = "https://api.opendota.com/api/proMatches"
     LAKE_PATH: str = "/mnt/datalake/game-lake-house"
     TABLE_NAME: str = "match_history"
     RAW_TABLE_PATH: str = f"{LAKE_PATH}/raw/dota/{TABLE_NAME}"
-    INGESTION_MODE: Leteral["history", "new"] = "new"
+    INGESTION_MODE: Literal["history", "new"] = "new"
 
 Configs = HistoryMatchesConfigs()
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Development
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC #### Get pro matches history
-# MAGIC - Get data from each dota pro match.
-
-# COMMAND ----------
-
+# DBTITLE 1,Get matches history
 class Ingestor:
-    def __init__(self, session: Session, url: str, path_to_save: str) -> None:
-        self.__session = session
+    def __init__(self, extractor, url: str, path_to_save: str) -> None:
+        self.extractor = extractor
         self.url = url
         self.path_to_save = path_to_save
-
-    @lru_cache
-    def _get_data(self, **params) -> list[dict]:
-
-        response = self.__session.get(self.url, params=params)
-        return response.json()
 
     def _get_min_match_id(self, data: list[dict]) -> int:
         return min([item["match_id"] for item in data])
@@ -76,7 +49,7 @@ class Ingestor:
             .save(self.path_to_save))
         
     def _get_and_save(self, **params) -> list[dict]:
-        data = self._get_data(**params)
+        data = self.extractor.get_data(self.url, **params)
         df = spark.createDataFrame(data)
         df = self._augment_start_time(df)
         self._save_data(df)
@@ -122,9 +95,10 @@ class Ingestor:
 
 # COMMAND ----------
 
-session = HTTPRequester().create_session()
-match_ingestor = Ingestor(session, Configs.OPENDOTA_URL, Configs.RAW_TABLE_PATH)
-INGESTION_MODE = Configs.INGESTION_MODE["new"]
+session = utils.HTTPRequester().create_session()
+extractor = utils.Extractor(session)
+match_ingestor = Ingestor(extractor, Configs.OPENDOTA_URL, Configs.RAW_TABLE_PATH)
+INGESTION_MODE = Configs.INGESTION_MODE
 
 
 if INGESTION_MODE == "history":
@@ -133,4 +107,8 @@ if INGESTION_MODE == "history":
     match_ingestor.get_all_matches(data=data, hist=True)
 elif INGESTION_MODE == "new":
     match_ingestor.get_all_matches()
+
+
+# COMMAND ----------
+
 

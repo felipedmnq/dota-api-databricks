@@ -1,4 +1,8 @@
-# Databricks notebook source
+__all__ = ["get_schema_from_json", "table_exists", "HTTPRequester", "Extractor"]
+
+import json
+from pyspark.sql.types import StructType
+from pyspark.sql import SparkSession
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from functools import lru_cache
@@ -6,27 +10,21 @@ import requests
 from requests import Session
 from dataclasses import dataclass, field
 
-# COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Utilities
+def get_schema_from_json(path: str) -> StructType:
+    with open(path, "r") as json_schema:
+        schema_json = json.load(json_schema)
+        return StructType.fromJson(schema_json)
 
-# COMMAND ----------
+def table_exists(database: str, table_name: str, spark: SparkSession) -> bool:
+    count = (spark.sql(f"SHOW TABLES IN {database}")
+                .filter(f"tableName = '{table_name}'")
+                .count()
+            )
+    return count == 1
 
-class Extractor:
 
-    def __init__(self, session: Session) -> None:
-        self.__session = session
-
-    @lru_cache
-    def get_data(self, url: str, **params) -> list[dict]:
-
-        response = self.__session.get(url, params=params)
-        return response.json()
-
-# COMMAND ----------
-
- class HTTPRequester:
+class HTTPRequester:
 
     def __init__(self) -> None:
         self.session = self.create_session()
@@ -56,12 +54,15 @@ class Extractor:
         session.mount("https://", session_adapter)
 
         return session
+    
 
+class Extractor:
 
-# COMMAND ----------
+    def __init__(self, session: Session) -> None:
+        self.__session = session
 
+    @lru_cache
+    def get_data(self, url: str, **params) -> list[dict]:
 
-
-# COMMAND ----------
-
-
+        response = self.__session.get(url, params=params)
+        return response.json()
