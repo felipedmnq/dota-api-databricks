@@ -65,17 +65,12 @@ else:
 
 # COMMAND ----------
 
-df = spark.read.json(Configs.RAW_DETAILS_PATH, schema=match_details_schema)
-df.display()
-
-# COMMAND ----------
-
 # DBTITLE 1,Read Stream
 df_stream = (spark.readStream
                 .format("cloudFiles")
                 .option("cloudFiles.format", "json")
                 .option("cloudFiles.maxFilesPerTrigger", 1000)
-                .schema(match_schema)
+                .schema(match_details_schema)
                 .load(Configs.RAW_DETAILS_PATH)
             )
 
