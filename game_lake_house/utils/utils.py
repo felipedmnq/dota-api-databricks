@@ -1,20 +1,26 @@
-__all__ = ["get_schema_from_json", "table_exists", "HTTPRequester", "Extractor"]
+__all__ = ["get_schema_from_json", "table_exists", "HTTPRequester", "Extractor", "import_query"]
 
 import json
 from pyspark.sql.types import StructType
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from functools import lru_cache
 import requests
 from requests import Session
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from delta.tables import DeltaTable
 
 
 def get_schema_from_json(path: str) -> StructType:
     with open(path, "r") as json_schema:
         schema_json = json.load(json_schema)
         return StructType.fromJson(schema_json)
+    
+def import_query(path: str):
+    with open(path, "r") as file_:
+        return file_.read()
 
 def table_exists(database: str, table_name: str, spark: SparkSession) -> bool:
     count = (spark.sql(f"SHOW TABLES IN {database}")
@@ -23,6 +29,31 @@ def table_exists(database: str, table_name: str, spark: SparkSession) -> bool:
             )
     return count == 1
 
+def date_range(date_start, date_stop):
+    start = datetime.strptime(date_start, "%Y-%m-%d")
+    stop = datetime.strptime(date_stop, "%Y-%m-%d")
+
+    dates = []
+    while start <= stop:
+        dates.append(start.strftime("%Y-%m-%d"))
+        start += timedelta(days=1)
+
+    return dates
+
+def first_load(df: DataFrame, db_table: str, partition: str) -> None:
+    (df.write.format("delta")
+        .mode("overwrite")
+        .partitionBy(partition)
+        .saveAsTable(db_table))
+    
+def upsert(df: DataFrame, delta_table: DeltaTable, id_columns) -> None:
+    join_cond = " and ".join([f"delta.{id_} = df.{id_}" for id_ in id_columns])
+
+    (delta_table.alias("delta")
+        .merge(df.alias("df"), join_cond)
+        .whenMatchedUpdateAll()
+        .whenNotMatchedInsertAll()
+        .execute())
 
 class HTTPRequester:
 
